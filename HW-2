@@ -1,0 +1,228 @@
+1.
+
+
+
+
+2.
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import urllib.request
+
+url = 'https://farm4.staticflickr.com/3752/9684880330_9b4698f7cb_z_d.jpg'
+image = Image.open(urllib.request.urlopen(url)).convert('L')
+image = np.array(image) / 255.0
+
+def floyd_steinberg_dither(image):
+    h, w = image.shape
+    dithered_image = np.copy(image)
+    for y in range(h):
+        for x in range(w):
+            old_pixel = dithered_image[y, x]
+            new_pixel = np.round(old_pixel)
+            dithered_image[y, x] = new_pixel
+            quant_error = old_pixel - new_pixel
+            if x + 1 < w:
+                dithered_image[y, x + 1] += quant_error * 7 / 16
+            if y + 1 < h:
+                if x > 0:
+                    dithered_image[y + 1, x - 1] += quant_error * 3 / 16
+                dithered_image[y + 1, x] += quant_error * 5 / 16
+                if x + 1 < w:
+                    dithered_image[y + 1, x + 1] += quant_error * 1 / 16
+    return dithered_image
+
+def jarvis_judice_ninke_dither(image):
+    h, w = image.shape
+    dithered_image = np.copy(image)
+    diffusion_matrix = np.array([
+        [0, 0, 0, 7, 5],
+        [3, 5, 7, 5, 3],
+        [1, 3, 5, 3, 1]
+    ]) / 48
+    for y in range(h):
+        for x in range(w):
+            old_pixel = dithered_image[y, x]
+            new_pixel = np.round(old_pixel)
+            dithered_image[y, x] = new_pixel
+            quant_error = old_pixel - new_pixel
+            for dy in range(3):
+                for dx in range(-2, 3):
+                    if 0 <= y + dy < h and 0 <= x + dx < w:
+                        dithered_image[y + dy, x + dx] += quant_error * diffusion_matrix[dy, dx + 2]
+    return dithered_image
+
+floyd_steinberg_image = floyd_steinberg_dither(image)
+jarvis_judice_ninke_image = jarvis_judice_ninke_dither(image)
+
+plt.figure(figsize=(15, 5))
+plt.subplot(1, 3, 1)
+plt.title('Original Image')
+plt.imshow(image, cmap='gray')
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.title('Floyd-Steinberg Dithered')
+plt.imshow(floyd_steinberg_image, cmap='gray')
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.title('Jarvis-Judice-Ninke Dithered')
+plt.imshow(jarvis_judice_ninke_image, cmap='gray')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+
+3.
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import urllib.request
+
+url = 'https://picsum.photos/id/237/200/300'
+image = Image.open(urllib.request.urlopen(url)).convert('L')
+image = np.array(image)
+
+def kuwahara_filter(image, kernel_size=5):
+    h, w = image.shape
+    pad_size = kernel_size // 2
+    padded_image = np.pad(image, pad_size, mode='reflect')
+    filtered_image = np.zeros_like(image)
+
+    for y in range(h):
+        for x in range(w):
+            window = padded_image[y:y + kernel_size, x:x + kernel_size]
+            subregions = [
+                window[:pad_size + 1, :pad_size + 1],
+                window[:pad_size + 1, pad_size:],
+                window[pad_size:, :pad_size + 1],
+                window[pad_size:, pad_size:]
+            ]
+            means = [np.mean(region) for region in subregions]
+            variances = [np.var(region) for region in subregions]
+            filtered_image[y, x] = means[np.argmin(variances)]
+    return filtered_image
+
+kuwahara_image = kuwahara_filter(image)
+plt.figure(figsize=(10, 5))
+
+plt.subplot(1, 2, 1)
+plt.title('Original Image')
+plt.imshow(image, cmap='gray')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.title('Kuwahara Filtered Image')
+plt.imshow(kuwahara_image, cmap='gray')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+
+4.
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+import urllib.request
+
+# Use a valid direct image URL
+url = 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png'
+
+# Load the image from the URL using urllib and Pillow
+with urllib.request.urlopen(url) as url_response:
+    image = np.array(Image.open(url_response))
+
+# Convert the image to grayscale if it is not already                                        
+if len(image.shape) == 3:
+    # If the image is in RGB format, convert it to grayscale
+    image = np.dot(image[..., :3], [0.2989, 0.587, 0.114])
+
+# Step 1: Apply Fourier Transform
+f_transform = np.fft.fft2(image)
+f_transform_shifted = np.fft.fftshift(f_transform)
+magnitude_spectrum = np.log(np.abs(f_transform_shifted) + 1)
+
+# Step 2: Create Butterworth Filter
+def butterworth_filter(shape, cutoff, order=2):
+    rows, cols = shape
+    crow, ccol = rows // 2, cols // 2
+    x, y = np.ogrid[0:rows, 0:cols]
+    d = np.sqrt((x - crow) ** 2 + (y - ccol) ** 2)
+    return 1 / (1 + (d / cutoff) ** (2 * order))
+
+# Apply Butterworth filter
+cutoff_butter = 30
+butter_filter = butterworth_filter(image.shape, cutoff_butter)
+filtered_butter = f_transform_shifted * butter_filter
+
+# Step 3: Create Gaussian Filter
+def gaussian_filter(shape, cutoff):
+    rows, cols = shape
+    crow, ccol = rows // 2, cols // 2
+    x, y = np.ogrid[0:rows, 0:cols]
+    d = np.sqrt((x - crow) ** 2 + (y - ccol) ** 2)
+    return np.exp(-(d ** 2) / (2 * (cutoff ** 2)))
+
+# Apply Gaussian filter
+cutoff_gaussian = 30
+gaussian_filter = gaussian_filter(image.shape, cutoff_gaussian)
+filtered_gaussian = f_transform_shifted * gaussian_filter
+
+# Step 4: Inverse Fourier Transform
+img_butter_filtered = np.fft.ifft2(np.fft.ifftshift(filtered_butter)).real
+img_gaussian_filtered = np.fft.ifft2(np.fft.ifftshift(filtered_gaussian)).real
+
+# Step 5: Display Results
+plt.figure(figsize=(12, 8))
+
+plt.subplot(2, 2, 1)
+plt.title('Original Image')
+plt.imshow(image, cmap='gray')
+plt.axis('off')
+
+plt.subplot(2, 2, 2)
+plt.title('Magnitude Spectrum')
+plt.imshow(magnitude_spectrum, cmap='gray')
+plt.axis('off')
+
+plt.subplot(2, 2, 3)
+plt.title('Butterworth Filtered Image')
+plt.imshow(img_butter_filtered, cmap='gray')
+plt.axis('off')
+
+plt.subplot(2, 2, 4)
+plt.title('Gaussian Filtered Image')
+plt.imshow(img_gaussian_filtered, cmap='gray')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+5.
+originalImage = imread('https://picsum.photos/id/237/200/300');
+if size(originalImage, 3) == 3
+    grayImage = rgb2gray(originalImage);
+else
+    grayImage = originalImage;
+end
+normalizedImage = double(grayImage) / 255;
+numLevels = 32;
+quantizedValues = round(normalizedImage * (numLevels - 1));
+smallImage = imresize(quantizedValues, 0.5, 'bilinear');
+quantizedImage = imresize(smallImage, size(grayImage), 'bilinear');
+finalQuantizedImage = uint8(quantizedImage * 255 / (numLevels - 1));
+figure;
+subplot(1, 2, 1);
+imshow(grayImage);
+title('Original Grayscale Image');
+
+subplot(1, 2, 2);
+imshow(finalQuantizedImage);
+title('Quantized Image (32 Levels)');
+
