@@ -1,4 +1,36 @@
 1.
+img = imread('https://picsum.photos/id/237/200/300');
+gray_img = rgb2gray(img);
+[rows, cols] = size(gray_img);
+center_row = round(rows / 2);
+center_col = round(cols / 2);
+radius = 50;
+[x, y] = meshgrid(1:cols, 1:rows);
+mask = (x - center_col).^2 + (y - center_row).^2 <= radius^2;
+figure;
+imshow(mask);
+title('Binary Mask');
+masked_img = gray_img .* uint8(mask);
+gaussian_filter = fspecial('gaussian', [5 5], 2); 
+low_pass_gaussian = imfilter(masked_img, gaussian_filter, 'replicate');
+
+average_filter = fspecial('average', [5 5]); 
+low_pass_average = imfilter(masked_img, average_filter, 'replicate');
+
+laplacian_filter = fspecial('laplacian', 0.2);
+high_pass_laplacian = imfilter(masked_img, laplacian_filter, 'replicate');
+
+prewitt_filter = fspecial('prewitt'); 
+high_pass_prewitt_x = imfilter(masked_img, prewitt_filter, 'replicate');
+high_pass_prewitt_y = imfilter(masked_img, prewitt_filter, 'replicate');
+high_pass_prewitt = sqrt(high_pass_prewitt_x.^2 + high_pass_prewitt_y.^2);
+
+figure;
+subplot(2, 3, 1); imshow(masked_img); title('Masked Image');
+subplot(2, 3, 2); imshow(low_pass_gaussian); title('Gaussian Low-Pass Filter');
+subplot(2, 3, 3); imshow(low_pass_average); title('Average Low-Pass Filter');
+subplot(2, 3, 4); imshow(high_pass_laplacian, []); title('Laplacian High-Pass Filter');
+subplot(2, 3, 5); imshow(high_pass_prewitt, []); title('Prewitt High-Pass Filter');
 
 
 
